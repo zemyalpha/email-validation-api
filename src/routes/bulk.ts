@@ -1,7 +1,6 @@
 import { FastifyPluginAsync } from 'fastify';
 import { config } from '../config.js';
 import { createBulkJob, getBulkJob } from '../services/database.js';
-import { hashKey } from '../services/database.js';
 import { enqueueJob } from '../services/queue.js';
 import { validateUrl } from '../services/ssrf.js';
 
@@ -66,8 +65,7 @@ const bulkRoute: FastifyPluginAsync = async (fastify) => {
         }
       }
 
-      const rawKey = request.headers['x-api-key'] as string;
-      const keyHash = hashKey(rawKey);
+      const keyHash = request.apiKey.key;
 
       const jobId = createBulkJob(keyHash, emails, webhook_url);
       enqueueJob(jobId, keyHash);
@@ -111,8 +109,7 @@ const bulkRoute: FastifyPluginAsync = async (fastify) => {
     },
     async (request, reply) => {
       const { job_id } = request.params;
-      const rawKey = request.headers['x-api-key'] as string;
-      const keyHash = hashKey(rawKey);
+      const keyHash = request.apiKey.key;
 
       const job = getBulkJob(job_id, keyHash);
       if (!job) {

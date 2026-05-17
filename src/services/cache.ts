@@ -1,6 +1,7 @@
 import Redis from 'ioredis';
 import { config } from '../config.js';
 import { ValidationResult } from '../types.js';
+import { logger } from './logger.js';
 
 let client: Redis | null = null;
 
@@ -14,7 +15,7 @@ export function getRedis(): Redis {
       ...(config.redis.password ? { password: config.redis.password } : {}),
     });
     client.on('error', (err: Error) => {
-      console.error('[redis] connection error:', err.message);
+      logger.error({ err: err.message }, '[redis] connection error');
     });
   }
   return client;

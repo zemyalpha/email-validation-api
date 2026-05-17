@@ -2,6 +2,7 @@ import PQueue from 'p-queue';
 import { config } from '../config.js';
 import { BulkJob, ValidationResult } from '../types.js';
 import { getBulkJob, updateBulkJob } from './database.js';
+import { logger } from './logger.js';
 import { validateUrl } from './ssrf.js';
 import { validateEmail } from './validation.js';
 
@@ -9,14 +10,18 @@ const queue = new PQueue({ concurrency: config.bulk.concurrency });
 
 export function enqueueJob(jobId: string, keyHash: string): void {
   queue.add(() => processJob(jobId, keyHash)).catch((err: unknown) => {
-    console.error(`[queue] job ${jobId} enqueue error:`, err);
+    logger.error({ jobId, err }, '[queue] job enqueue error');
   });
+}
+
+export function pauseQueue(): void {
+  queue.pause();
 }
 
 async function processJob(jobId: string, keyHash: string): Promise<void> {
   const job = getBulkJob(jobId, keyHash);
   if (!job) {
-    console.error(`[queue] job ${jobId} not found`);
+    logger.error({ jobId }, '[queue] job not found');
     return;
   }
 
@@ -37,7 +42,7 @@ async function processJob(jobId: string, keyHash: string): Promise<void> {
       await sendWebhook(job.webhook_url, { ...job, status: 'completed', results });
     }
   } catch (err) {
-    console.error(`[queue] job ${jobId} failed:`, err);
+    logger.error({ jobId, err }, '[queue] job failed');
     updateBulkJob(jobId, 'failed');
 
     if (job.webhook_url) {
@@ -51,7 +56,7 @@ async function sendWebhook(url: string, payload: Partial<BulkJob>): Promise<void
   // changed since the job was queued (rebinding).
   const urlCheck = await validateUrl(url);
   if (!urlCheck.ok) {
-    console.warn(`[webhook] refused to send to ${url}: ${urlCheck.reason}`);
+    logger.warn({ url, reason: urlCheck.reason }, '[webhook] refused SSRF policy');
     return;
   }
 
@@ -63,9 +68,9 @@ async function sendWebhook(url: string, payload: Partial<BulkJob>): Promise<void
       signal: AbortSignal.timeout(10000),
     });
     if (!response.ok) {
-      console.warn(`[webhook] non-OK response ${response.status} for ${url}`);
+      logger.warn({ url, status: response.status }, '[webhook] non-OK response');
     }
   } catch (err) {
-    console.error(`[webhook] failed to deliver to ${url}:`, err);
+    logger.error({ url, err }, '[webhook] failed to deliver');
   }
 }
